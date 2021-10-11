@@ -571,6 +571,13 @@ bp_node_t *bp_create_data_node(
 	return (bp_node_t *)new;
 }
 
+/**
+ * @brief 根据二分查找的结果在内部结点上找到插入数据的位置
+ *
+ * @param inner 内部结点
+ * @param found_idx 二分查找返回的下标
+ * @return bp_node_t * inner content 上的位置
+ */
 bp_node_t *bp_inner_node_get_insert_position(
 	bp_inner_node_t *inner,
 	int              found_idx)
@@ -588,6 +595,13 @@ bp_node_t *bp_inner_node_get_insert_position(
 		* (sizeof(bp_node_t *) + inner->key_size)));
 }
 
+/**
+ * @brief 内部结点分裂，分裂完后 to_split 保存前半部分数据， pp_new 保存后半部分数据
+ *
+ * @param to_split 要分裂的结点
+ * @param pp_new 用于输出分裂出的结点
+ * @return int 是否分裂成功
+ */
 int bp_inner_node_split(bp_node_t *to_split, bp_node_t **pp_new)
 {
 	bp_inner_node_t *old;
@@ -619,6 +633,16 @@ int bp_inner_node_split(bp_node_t *to_split, bp_node_t **pp_new)
 	return 0;
 }
 
+/**
+ * @brief inner 的子结点 child 分裂后，inner 上 child 的索引和新结点的索引
+ *
+ * @param inner 内部结点
+ * @param child 分裂的子结点
+ * @param split_child 分裂出的新结点
+ * @param child_idx 分裂前 child 在 inner 上的下标
+ * @param split_inner 如果 inner 已经满了，则 inner 也会分裂，用于返回分裂出的结点
+ * @return int 0 成功 -1 失败
+ */
 int bp_inner_node_add_split_child(
 	bp_inner_node_t   *inner,
 	bp_node_common_t  *child,
@@ -640,6 +664,7 @@ int bp_inner_node_add_split_child(
 
 	inner_contains_child = inner;
 	if (*split_inner) {
+		// 如果 inner 分裂了的话，需要找到 child 应该保存在 inner 还是 *split_inner
 		if (child_idx < inner->common.key_num) {
 			inner_contains_child = inner;
 		} else {
@@ -671,6 +696,15 @@ int bp_inner_node_add_split_child(
 	return 0;
 }
 
+/**
+ * @brief 内部结点插入数据
+ *
+ * @param node 内部结点
+ * @param key 要插入的被索引项
+ * @param position 被索引项的位置信息
+ * @param pp_new 如果内部结点发生分裂的话，返回分裂出的结点
+ * @return int 0 成功 -1 失败
+ */
 int bp_inner_node_insert_data(
 	bp_node_t      *node,
 	unsigned char  *key,
@@ -699,9 +733,14 @@ int bp_inner_node_insert_data(
 	bp_bi_search_last(inner->content, valid_data_len, item_size, key,
 					  inner->key_size, sizeof(bp_node_t *),
 					  inner->common.compare, &found_idx);
-	if (found_idx == inner->common.key_num)
+	if (found_idx == inner->common.key_num) {
+		// B+树的查找原理可以保证这种情况只会出现在树的最右侧结点，此时更新最右侧
+		// 结点的最大值为新的最大值，并把新值插入最右侧的子树
 		memcpy(inner->content + (found_idx - 1) * item_size + sizeof(bp_node_t *),
 			   key, inner->key_size);
+	}
+
+	// 找到子树插入
 	child = (bp_node_common_t *)bp_inner_node_get_insert_position(
 		inner, found_idx);
 	if (-1 == child->insert((bp_node_t *)child, key, position,
@@ -717,6 +756,14 @@ int bp_inner_node_insert_data(
 	return 0;
 }
 
+/**
+ * @brief 获取内部结点保存的最大 key 值
+ *
+ * @param node 内部结点
+ * @param key_buf 用于输出最大 key 值
+ * @param key_buf_len 输出缓存的长度
+ * @return int -1 失败 否则为 memcpy 的长度
+ */
 int bp_inner_node_max_key(
 	bp_node_t     *node,
 	unsigned char *key_buf,
